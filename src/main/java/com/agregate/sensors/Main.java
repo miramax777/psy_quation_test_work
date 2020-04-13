@@ -5,10 +5,9 @@ import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructType;
 
 import java.sql.Timestamp;
-import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 import static org.apache.spark.sql.types.DataTypes.StringType;
 import static org.apache.spark.sql.types.DataTypes.TimestampType;
@@ -23,30 +22,30 @@ public class Main {
 
         final SparkSession session = SparkSession.builder()
                 .appName("PsyQuationAggregateApp")
-                .master("local[3]")
+                .master("local[*]")
                 .getOrCreate();
 
         final StructType sensor_info_schema = new StructType()
-                .add("sensor_id_info", StringType,false)
-                .add("channel_id_info", StringType,false)
-                .add("channel_type", StringType,false)
-                .add("location_id", StringType,false);
+                .add("sensor_id_info", StringType, false)
+                .add("channel_id_info", StringType, false)
+                .add("channel_type", StringType, false)
+                .add("location_id", StringType, false);
 
         final StructType sensor_type_schema = new StructType()
-                .add("sensor_id", StringType,true)
-                .add("channel_id", StringType,true)
-                .add("timestamp", TimestampType,true)
-                .add("value", StringType,true);
+                .add("sensor_id", StringType, true)
+                .add("channel_id", StringType, true)
+                .add("timestamp", TimestampType, true)
+                .add("value", StringType, true);
 
         final Dataset<Row> sensors_info = session.read()
                 .option("header", "false")
-                .option("delimiter",",")
+                .option("delimiter", ",")
                 .schema(sensor_info_schema)
                 .csv("input/ds1.csv");
 
         final Dataset<Row> sensors_data = session.read()
                 .option("header", "false")
-                .option("delimiter",",")
+                .option("delimiter", ",")
                 .schema(sensor_type_schema)
                 .csv("input/ds2.csv");
 
@@ -64,84 +63,74 @@ public class Main {
                 sensors_data.col("value")
         ).as(Encoders.bean(SensorData.class));
 
-        final Set<String> locations = result.collectAsList().stream()
-                .map(SensorData::getLocation_id)
-                .collect(Collectors.toSet());
+        result.createGlobalTempView("sensors_joined_result");
 
-        //final LocalDateTime firstSensorDate = result.first().getTimestamp().toLocalDateTime();
+        final List<String> locations = session.sql("SELECT DISTINCT location_id FROM global_temp.sensors_joined_result ORDER BY location_id")
+                .as(Encoders.STRING())
+                .collectAsList();
 
-        //final LocalDateTime normalizedFirstSensorDate = firstSensorDate.withMinute(SENSOR_DATA_REPORT_MINUTES_INTERVAL * (firstSensorDate.getMinute() / SENSOR_DATA_REPORT_MINUTES_INTERVAL));
-
-        //result.createGlobalTempView("sensors_joined_result");
+        List<SensorAverageData> sensorResult = new ArrayList<>();
 
         locations.forEach(l -> {
-//            session.sql("set sensor_date_from=" + Timestamp.valueOf(normalizedFirstSensorDate.withSecond(0)).toString());
-//            session.sql("set sensor_date_to=" + Timestamp.valueOf(normalizedFirstSensorDate.plusMinutes(15).withSecond(0)).toString());
-//            session.sql("set location=" + l);
-//
-//            final Dataset<Row> sensorDataInTimeSlot = session.sql(
-//                    "SELECT timestamp, location_id, sensor_id_info, channel_id, channel_type, value " +
-//                            "FROM global_temp.sensors_joined_result " +
-//                            "WHERE location_id = '${location} ' " +
-//                            "AND timestamp > '${sensor_date_from}' " +
-//                            "AND timestamp < '${sensor_date_to}'"
-//            );
-//
-//
+            //final Dataset<SensorData> sensorDataForLocation = result.filter(result.col("location_id").equalTo(l));
+            final List<SensorData> sensorDataForLocation = session.sql("SELECT * FROM global_temp.sensors_joined_result where location_id = '" + l + "'")
+                    .as(Encoders.bean(SensorData.class))
+                    .collectAsList();
 
-            final Dataset<SensorData> sensorDataForLocation = result.filter(result.col("location_id").equalTo(l));
 
-            final Timestamp sensorDateStart = sensorDataForLocation.first().getTimestamp();
-            final Timestamp sensorDateEnd = sensorDataForLocation.sort(new Column("timestamp").desc()).first().getTimestamp();
+//            final Timestamp sensorDateStart = sensorDataForLocation.first().getTimestamp();
+            final Timestamp sensorDateStart = sensorDataForLocation.iterator().next().getTimestamp();
+            //final Timestamp sensorDateEnd = sensorDataForLocation.sort(new Column("timestamp").desc()).first().getTimestamp();
+            final Timestamp sensorDateEnd = sensorDataForLocation.get(sensorDataForLocation.size() - 1).getTimestamp();
 
-            Timestamp sensorDataPeriodStart = Timestamp.valueOf(sensorDateStart.toLocalDateTime().withSecond(0));
-            Timestamp sensorDataPeriodEnd = Timestamp.valueOf(
-                    sensorDateStart
-                            .toLocalDateTime()
+            final Timestamp sensorDataPeriodStart = Timestamp.valueOf(
+                    sensorDateStart.toLocalDateTime()
                             .withMinute(SENSOR_DATA_REPORT_MINUTES_INTERVAL * (sensorDateStart.toLocalDateTime().getMinute() / SENSOR_DATA_REPORT_MINUTES_INTERVAL))
-                            .plusMinutes(15)
                             .withSecond(0)
             );
 
-            List<Timestamp> timeslots = Arrays.asList(sensorDataPeriodStart);
+            List<Timestamp> timeslots = new ArrayList<>(Collections.singletonList(sensorDataPeriodStart));
 
-            sensorDataForLocation.foreach(sd -> {
-                 if() {
+            while (timeslots.get(timeslots.size() - 1).before(Timestamp.valueOf(sensorDateEnd.toLocalDateTime()))) {
+                timeslots.add(Timestamp.valueOf(timeslots.get(timeslots.size() - 1).toLocalDateTime().plusMinutes(15)));
+            }
 
-                 } else {
+            timeslots.forEach(i -> {
+//                final Dataset<SensorData> sensorDataInTimeSlot = sensorDataForLocation
+//                        .filter(result.col("timestamp").$greater(i.toString()))
+//                        .filter(result.col("timestamp").$less(Timestamp.valueOf(i.toLocalDateTime().plusMinutes(15)).toString()));
+                session.sql("set sensor_date_from=" + i.toString());
+                session.sql("set sensor_date_to=" + Timestamp.valueOf(i.toLocalDateTime().plusMinutes(15)).toString());
+                session.sql("set location=" + l);
 
-                 }
+                final Dataset<SensorData> sensorDataInTimeSlot = session.sql(
+                        "SELECT timestamp, location_id, sensor_id_info, channel_id, channel_type, value " +
+                                "FROM global_temp.sensors_joined_result " +
+                                "WHERE location_id = '${location} ' " +
+                                "AND timestamp > '${sensor_date_from}' " +
+                                "AND timestamp < '${sensor_date_to}'"
+                ).as(Encoders.bean(SensorData.class));
 
+                final Dataset<SensorData> temperatureData = sensorDataInTimeSlot
+                        .filter(sensorDataInTimeSlot.col("channel_type").equalTo("temperature"));
 
+                final Dataset<SensorData> presenceData = sensorDataInTimeSlot.filter(sensorDataInTimeSlot.col("channel_type").equalTo("presence"));
+
+                sensorResult.add(
+                        new SensorAverageData(
+                                i.toLocalDateTime(),
+                                l,
+                                temperatureData.agg(functions.min(sensorDataInTimeSlot.col("value"))).as(Encoders.STRING()).first(),
+                                temperatureData.agg(functions.max(sensorDataInTimeSlot.col("value"))).as(Encoders.STRING()).first(),
+                                temperatureData.agg(functions.avg(sensorDataInTimeSlot.col("value"))).as(Encoders.STRING()).first(),
+                                temperatureData.count(),
+                                presenceData.filter(sensorDataInTimeSlot.col("value").gt(0)).count() > 0,
+                                presenceData.count()
+                        )
+                );
             });
-
-
-            sensorDataForLocation.foreach(d -> {
-                
-            });
-
-            final Dataset<SensorData> sensorDataInTimeSlot = sensorDataForLocation
-                    .filter(result.col("timestamp").$greater(sensorDataPeriodStart.toString()))
-                    .filter(result.col("timestamp").$less(sensorDataPeriodEnd.toString()));
-
-            final Dataset<SensorData> temperatureData = sensorDataInTimeSlot
-                    .filter(sensorDataInTimeSlot.col("channel_type").equalTo("temperature"));
-
-            final Dataset<SensorData> presenceData = sensorDataInTimeSlot.filter(sensorDataInTimeSlot.col("channel_type").equalTo("presence"));
-
-            presenceData.count();
-            presenceData.filter(sensorDataInTimeSlot.col("value").gt(0)).count();
-
-            new SensorAverageData(
-                    sensorDataPeriodStart.toLocalDateTime(),
-                    l,
-                    temperatureData.agg(functions.min(sensorDataInTimeSlot.col("value"))).as(Encoders.STRING()).first(),
-                    temperatureData.agg(functions.max(sensorDataInTimeSlot.col("value"))).as(Encoders.STRING()).first(),
-                    temperatureData.agg(functions.avg(sensorDataInTimeSlot.col("value"))).as(Encoders.STRING()).first(),
-                    temperatureData.count(),
-                    presenceData.filter(sensorDataInTimeSlot.col("value").gt(0)).count() > 0,
-                    presenceData.count()
-            );
         });
+
+        sensorResult.size();
     }
 }
