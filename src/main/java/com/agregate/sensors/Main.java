@@ -72,15 +72,11 @@ public class Main {
         List<SensorAverageData> sensorResult = new ArrayList<>();
 
         locations.forEach(l -> {
-            //final Dataset<SensorData> sensorDataForLocation = result.filter(result.col("location_id").equalTo(l));
             final List<SensorData> sensorDataForLocation = session.sql("SELECT * FROM global_temp.sensors_joined_result where location_id = '" + l + "'")
                     .as(Encoders.bean(SensorData.class))
                     .collectAsList();
 
-
-//            final Timestamp sensorDateStart = sensorDataForLocation.first().getTimestamp();
             final Timestamp sensorDateStart = sensorDataForLocation.iterator().next().getTimestamp();
-            //final Timestamp sensorDateEnd = sensorDataForLocation.sort(new Column("timestamp").desc()).first().getTimestamp();
             final Timestamp sensorDateEnd = sensorDataForLocation.get(sensorDataForLocation.size() - 1).getTimestamp();
 
             final Timestamp sensorDataPeriodStart = Timestamp.valueOf(
@@ -96,9 +92,6 @@ public class Main {
             }
 
             timeslots.forEach(i -> {
-//                final Dataset<SensorData> sensorDataInTimeSlot = sensorDataForLocation
-//                        .filter(result.col("timestamp").$greater(i.toString()))
-//                        .filter(result.col("timestamp").$less(Timestamp.valueOf(i.toLocalDateTime().plusMinutes(15)).toString()));
                 session.sql("set sensor_date_from=" + i.toString());
                 session.sql("set sensor_date_to=" + Timestamp.valueOf(i.toLocalDateTime().plusMinutes(15)).toString());
                 session.sql("set location=" + l);
@@ -118,19 +111,19 @@ public class Main {
 
                 sensorResult.add(
                         new SensorAverageData(
-                                i.toLocalDateTime(),
+                                i.toLocalDateTime().toString(),
                                 l,
                                 temperatureData.agg(functions.min(sensorDataInTimeSlot.col("value"))).as(Encoders.STRING()).first(),
                                 temperatureData.agg(functions.max(sensorDataInTimeSlot.col("value"))).as(Encoders.STRING()).first(),
                                 temperatureData.agg(functions.avg(sensorDataInTimeSlot.col("value"))).as(Encoders.STRING()).first(),
-                                temperatureData.count(),
+                                String.valueOf(temperatureData.count()),
                                 presenceData.filter(sensorDataInTimeSlot.col("value").gt(0)).count() > 0,
-                                presenceData.count()
+                                String.valueOf(presenceData.count())
                         )
                 );
             });
         });
 
-        sensorResult.size();
+        session.createDataFrame(sensorResult, SensorAverageData.class).write().csv("output/output.csv");
     }
 }

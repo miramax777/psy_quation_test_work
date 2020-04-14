@@ -1,28 +1,30 @@
 package com.agregate.sensors;
 
 import java.io.Serializable;
-import java.time.LocalDateTime;
 
 public class SensorAverageData implements Serializable {
 
-    private LocalDateTime timeSlotStart;
+    private String timeSlotStart;
     private String location;
     private String tempMin;
     private String tempMax;
     private String tempAvg;
-    private long tempCnt;
-    private boolean presence;
-    private long presenceCnt;
+    private String tempCnt;
+    private Boolean presence;
+    private String presenceCnt;
+
+    public SensorAverageData() {
+    }
 
     public SensorAverageData(
-            LocalDateTime timeSlotStart,
+            String timeSlotStart,
             String location,
             String tempMin,
             String tempMax,
             String tempAvg,
-            long tempCnt,
-            boolean presence,
-            long presenceCnt
+            String tempCnt,
+            Boolean presence,
+            String presenceCnt
     ) {
         this.timeSlotStart = timeSlotStart;
         this.location = location;
@@ -34,11 +36,11 @@ public class SensorAverageData implements Serializable {
         this.presenceCnt = presenceCnt;
     }
 
-    public LocalDateTime getTimeSlotStart() {
+    public String getTimeSlotStart() {
         return timeSlotStart;
     }
 
-    public void setTimeSlotStart(LocalDateTime timeSlotStart) {
+    public void setTimeSlotStart(String timeSlotStart) {
         this.timeSlotStart = timeSlotStart;
     }
 
@@ -74,15 +76,15 @@ public class SensorAverageData implements Serializable {
         this.tempAvg = tempAvg;
     }
 
-    public long getTempCnt() {
+    public String getTempCnt() {
         return tempCnt;
     }
 
-    public void setTempCnt(long tempCnt) {
+    public void setTempCnt(String tempCnt) {
         this.tempCnt = tempCnt;
     }
 
-    public boolean isPresence() {
+    public Boolean isPresence() {
         return presence;
     }
 
@@ -90,11 +92,11 @@ public class SensorAverageData implements Serializable {
         this.presence = presence;
     }
 
-    public long getPresencecnt() {
+    public String getPresencecnt() {
         return presenceCnt;
     }
 
-    public void setPresencecnt(long presenceCnt) {
+    public void setPresencecnt(String presenceCnt) {
         this.presenceCnt = presenceCnt;
     }
 }
